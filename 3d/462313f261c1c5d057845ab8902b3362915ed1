@@ -1,0 +1,69 @@
+.gitattributes
+  s_c7c347ed7800f6::t_a27a0795a1d859 1-2
+.github/workflows/ci.yml
+  s_a44684f0034695::t_14b91af0477f17 1-25
+.gitignore
+  s_a44684f0034695::t_272ce60539ada2 1-48
+README.md
+  s_a44684f0034695::t_b7290d2d27fbf4 1-270
+package-lock.json
+  s_8ccf8140ee63a5::t_598eda74129c65 1-2756
+package.json
+  s_a44684f0034695::t_c013c06a9681cc 1-36
+scripts/bootstrap.mjs
+  s_0265b160ec9491::t_91a52952ed209d 1-141
+scripts/deploy-caller.mjs
+  s_a44684f0034695::t_c1d5eb274ef292 1-32
+scripts/deploy-target.mjs
+  s_a44684f0034695::t_05655a582eed86 1-44
+scripts/wrangler.mjs
+  s_a44684f0034695::t_91bf8551897150 1-163
+test-node/wrangler.test.mjs
+  s_0265b160ec9491::t_d19f195da42d11 1-51
+test/index.spec.ts
+  s_a44684f0034695::t_89a5d426bdaed5 1-106
+workers/caller/env.d.ts
+  s_8ccf8140ee63a5::t_5488994836db63 1-15760
+workers/target/env.d.ts
+  s_8ccf8140ee63a5::t_2039dcd680d252 1-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3d462313f261c1c5d057845ab8902b3362915ed1",
+  "prompts": {},
+  "sessions": {
+    "s_0265b160ec9491": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f25aeeac6ffeDil44Vd1e57upq",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "gryczka <pgryczka@cloudflare.com>"
+    },
+    "s_8ccf8140ee63a5": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f31ae87f0ffeS2b1Jb1uWCk6Nz",
+        "model": "grok-4.7"
+      },
+      "human_author": "gryczka <pgryczka@cloudflare.com>"
+    },
+    "s_a44684f0034695": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f25e510f4ffeadR3BvZTPn0Uap",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "gryczka <pgryczka@cloudflare.com>"
+    },
+    "s_c7c347ed7800f6": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f2f008d09ffelRQKyUCVk46w3m",
+        "model": "gpt-6-sol"
+      },
+      "human_author": "gryczka <pgryczka@cloudflare.com>"
+    }
+  }
+}
