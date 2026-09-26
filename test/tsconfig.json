@@ -1,0 +1,8 @@
+{
+	"extends": "../tsconfig.json",
+	"compilerOptions": {
+		"types": ["../workers/caller/env.d.ts", "../workers/target/env.d.ts", "@cloudflare/vitest-plugin/types"]
+	},
+	"include": ["./**/*.ts", "../workers/**/*.d.ts"],
+	"exclude": []
+}

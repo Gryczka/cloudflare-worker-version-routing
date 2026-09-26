@@ -1,0 +1,2 @@
+# Wrangler's generated runtime declarations currently contain upstream trailing spaces.
+workers/caller/env.d.ts whitespace=-blank-at-eol,-blank-at-eof

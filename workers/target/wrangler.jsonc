@@ -1,0 +1,21 @@
+{
+	"$schema": "../../node_modules/wrangler/config-schema.json",
+	"name": "worker-version-routing-target",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-09-25",
+	"workers_dev": true,
+	"preview_urls": true,
+	"observability": {
+		"enabled": true
+	},
+	"upload_source_maps": true,
+	"version_metadata": {
+		"binding": "CF_VERSION_METADATA"
+	},
+	"vars": {
+		"RELEASE": "production",
+		"WORKER_NAME": "worker-version-routing-target",
+		"CALLER_ORIGIN": "https://worker-version-routing-caller.example.workers.dev",
+		"WORKERS_DEV_SUBDOMAIN": "example"
+	}
+}

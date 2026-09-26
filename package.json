@@ -1,0 +1,36 @@
+{
+	"name": "cloudflare-worker-version-routing",
+	"version": "1.0.0",
+	"description": "Call individually addressable Cloudflare Worker versions over HTTP from another Worker.",
+	"private": true,
+	"scripts": {
+		"preinstall": "node scripts/ensure-manifest.mjs",
+		"bootstrap": "node scripts/bootstrap.mjs",
+		"deploy:caller": "node scripts/deploy-caller.mjs",
+		"deploy:target": "node scripts/deploy-target.mjs",
+		"dev:caller": "wrangler dev --config workers/caller/wrangler.jsonc",
+		"dev:target": "wrangler dev --config workers/target/wrangler.jsonc",
+		"versions:target": "wrangler versions list --config workers/target/wrangler.jsonc",
+		"test": "vitest run && node --test test-node/*.test.mjs",
+		"cf-typegen": "wrangler types workers/caller/env.d.ts --config workers/caller/wrangler.jsonc --strict-vars false && wrangler types workers/target/env.d.ts --config workers/target/wrangler.jsonc --env-interface TargetEnv --include-runtime false --strict-vars false",
+		"cf-types:check": "wrangler types workers/caller/env.d.ts --config workers/caller/wrangler.jsonc --strict-vars false --check && wrangler types workers/target/env.d.ts --config workers/target/wrangler.jsonc --env-interface TargetEnv --include-runtime false --strict-vars false --check",
+		"typecheck": "npm run cf-types:check && tsc --noEmit && tsc -p test/tsconfig.json --noEmit",
+		"deploy:dry-run": "wrangler deploy --dry-run --config workers/target/wrangler.jsonc && wrangler deploy --dry-run --config workers/caller/wrangler.jsonc",
+		"check": "npm run typecheck && npm test && npm run deploy:dry-run"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/Gryczka/cloudflare-worker-version-routing.git"
+	},
+	"license": "MIT",
+	"engines": {
+		"node": "^22.12.0 || >=24.0.0"
+	},
+	"devDependencies": {
+		"@cloudflare/vitest-plugin": "^1.0.0",
+		"@types/node": "^26.6.2",
+		"typescript": "^5.5.2",
+		"vitest": "~4.1.0",
+		"wrangler": "^4.136.3"
+	}
+}
