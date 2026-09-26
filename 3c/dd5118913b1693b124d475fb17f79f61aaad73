@@ -1,0 +1,21 @@
+.gitattributes
+  s_0265b160ec9491::t_a4f00b29665221 2
+.github/workflows/ci.yml
+  s_0265b160ec9491::t_21d2fa25fcea1a 14,20-21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3cdd5118913b1693b124d475fb17f79f61aaad73",
+  "prompts": {},
+  "sessions": {
+    "s_0265b160ec9491": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f25aeeac6ffeDil44Vd1e57upq",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "gryczka <pgryczka@cloudflare.com>"
+    }
+  }
+}
