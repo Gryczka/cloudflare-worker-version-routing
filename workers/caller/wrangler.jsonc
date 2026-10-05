@@ -2,7 +2,7 @@
 	"$schema": "../../node_modules/wrangler/config-schema.json",
 	"name": "worker-version-routing-caller",
 	"main": "src/index.ts",
-	"compatibility_date": "2026-09-25",
+	"compatibility_date": "2026-10-05",
 	"compatibility_flags": ["global_fetch_strictly_public"],
 	"workers_dev": true,
 	"preview_urls": true,
@@ -15,8 +15,35 @@
 	},
 	"services": [{ "binding": "TARGET", "service": "worker-version-routing-target" }],
 	"vars": {
+		"LAB_ID": "",
+		"ENVIRONMENT": "production",
+		"PREVIEW_KEY": "",
+		"RELEASE": "production",
 		"TARGET_ORIGIN": "https://worker-version-routing-target.example.workers.dev",
+		"PINNED_TARGET_ORIGIN": "",
+		"PINNED_TARGET_VERSION_ID": "",
+		"UI_ORIGINS": "[\"https://worker-version-routing-target.example.workers.dev\"]",
 		"TARGET_WORKER_NAME": "worker-version-routing-target",
 		"WORKERS_DEV_SUBDOMAIN": "example"
+	},
+	"previews": {
+		"version_metadata": { "binding": "CF_VERSION_METADATA" },
+		"observability": {
+			"enabled": true,
+			"logs": { "enabled": true, "invocation_logs": true, "head_sampling_rate": 1, "persist": true },
+			"traces": { "enabled": true, "head_sampling_rate": 1, "persist": true }
+		},
+		"vars": {
+			"LAB_ID": "",
+			"ENVIRONMENT": "preview",
+			"PREVIEW_KEY": "branch-setup",
+			"RELEASE": "preview",
+			"TARGET_ORIGIN": "https://branch-setup-worker-version-routing-target.example.workers.dev",
+			"PINNED_TARGET_ORIGIN": "https://00000000-worker-version-routing-target.example.workers.dev",
+			"PINNED_TARGET_VERSION_ID": "00000000-0000-4000-8000-000000000000",
+			"UI_ORIGINS": "[\"https://worker-version-routing-target.example.workers.dev\"]",
+			"TARGET_WORKER_NAME": "worker-version-routing-target",
+			"WORKERS_DEV_SUBDOMAIN": "example"
+		}
 	}
 }

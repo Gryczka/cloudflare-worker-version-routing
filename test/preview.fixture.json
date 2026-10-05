@@ -1,0 +1,54 @@
+{
+	"schemaVersion": 2,
+	"accountId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+	"workersDevSubdomain": "example",
+	"uiOrigins": ["https://showcase.example"],
+	"candidateVersionId": "55555555-5555-4555-8555-555555555555",
+	"productionVersionId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+	"callerVersionId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+	"labVersions": [{ "release": "lab-01", "id": "66666666-6666-4666-8666-666666666666" }],
+	"checks": [],
+	"previews": [
+		{
+			"key": "branch-ui",
+			"target": {
+				"id": "target-preview-resource", "name": "branch-ui", "slug": "backend-ui-slug",
+				"url": "https://branch-ui-worker-version-routing-target.example.workers.dev",
+				"urls": ["https://branch-ui.preview.example", "https://branch-ui-worker-version-routing-target.example.workers.dev"]
+			},
+			"caller": {
+				"id": "caller-preview-resource", "name": "branch-ui", "slug": "backend-ui-slug",
+				"url": "https://branch-ui-worker-version-routing-caller.example.workers.dev",
+				"urls": ["https://branch-ui-worker-version-routing-caller.example.workers.dev"]
+			},
+			"revisions": [
+				{
+					"key": "branch-ui-r1", "release": "branch-ui-r1", "variant": "compact",
+					"target": {
+						"id": "deployment-target-one", "url": "https://ab12cd34-worker-version-routing-target.example.workers.dev",
+						"urls": ["https://ab12cd34-worker-version-routing-target.example.workers.dev"],
+						"versionId": "11111111-1111-4111-8111-111111111111", "release": "branch-ui-r1", "timestamp": "2026-10-05T00:00:00.000Z"
+					},
+					"caller": {
+						"id": "deployment-caller-one", "url": "https://ef12ab34-worker-version-routing-caller.example.workers.dev",
+						"urls": ["https://ef12ab34-worker-version-routing-caller.example.workers.dev"],
+						"versionId": "33333333-3333-4333-8333-333333333333", "release": "branch-ui-r1", "timestamp": "2026-10-05T00:00:00.000Z"
+					}
+				},
+				{
+					"key": "branch-ui-r2", "release": "branch-ui-r2", "variant": "detailed",
+					"target": {
+						"id": "deployment-target-two", "url": "https://cd34ef56-worker-version-routing-target.example.workers.dev",
+						"urls": ["https://cd34ef56-worker-version-routing-target.example.workers.dev"],
+						"versionId": "22222222-2222-4222-8222-222222222222", "release": "branch-ui-r2", "timestamp": "2026-10-05T00:01:00.000Z"
+					},
+					"caller": {
+						"id": "deployment-caller-two", "url": "https://ab34cd56-worker-version-routing-caller.example.workers.dev",
+						"urls": ["https://ab34cd56-worker-version-routing-caller.example.workers.dev"],
+						"versionId": "44444444-4444-4444-8444-444444444444", "release": "branch-ui-r2", "timestamp": "2026-10-05T00:01:00.000Z"
+					}
+				}
+			]
+		}
+	]
+}

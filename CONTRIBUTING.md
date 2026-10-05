@@ -18,7 +18,7 @@ npm install
 npm run check
 ```
 
-Use `npm run dev:target` or `npm run dev:caller` for local Worker development. Public Version URLs and cross-Worker edge routing require a deployed lab; see the bootstrap instructions in the README before creating Cloudflare resources.
+Use `npm run dev:target` or `npm run dev:caller` for local Worker development. Public Preview/Version URLs and cross-Worker edge routing require a deployed lab; see the bootstrap instructions in the README before creating Cloudflare resources. Keep credential-free tests independent of the ignored cloud manifest by using the sanitized Preview fixture and injected lifecycle lookups.
 
 ## Code Style
 

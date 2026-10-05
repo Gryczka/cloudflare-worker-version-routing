@@ -1,6 +1,13 @@
 {
+	"schemaVersion": 2,
 	"accountId": "",
+	"labId": "",
 	"workersDevSubdomain": "",
+	"uiOrigins": [],
 	"candidateVersionId": "",
-	"labVersions": []
+	"productionVersionId": "",
+	"callerVersionId": "",
+	"labVersions": [],
+	"previews": [],
+	"checks": []
 }

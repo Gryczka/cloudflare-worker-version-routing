@@ -2,6 +2,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { origin, validateManifest } from "./manifest.mjs";
 
 export const PROJECT_ROOT = fileURLToPath(new URL("../", import.meta.url));
 export const TARGET_CONFIG = "workers/target/wrangler.jsonc";
@@ -12,7 +13,7 @@ export const CALLER_WORKER = "worker-version-routing-caller";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const SUBDOMAIN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
-const WRANGLER = fileURLToPath(new URL("../node_modules/wrangler/bin/wrangler.js", import.meta.url));
+export const WRANGLER = fileURLToPath(new URL("../node_modules/wrangler/bin/wrangler.js", import.meta.url));
 
 /** Returns the public origins created by the two Worker names. */
 export function getOrigins(subdomain) {
@@ -23,36 +24,60 @@ export function getOrigins(subdomain) {
 }
 
 /** Builds all target vars so CLI overrides never leave account-specific defaults behind. */
-export function targetVarArgs(release, subdomain) {
+export function targetVarArgs(release, subdomain, extra = {}) {
 	const { callerOrigin } = getOrigins(subdomain);
-	return [
-		"--var", `RELEASE:${release}`,
-		"--var", `WORKER_NAME:${TARGET_WORKER}`,
-		"--var", `CALLER_ORIGIN:${callerOrigin}`,
-		"--var", `WORKERS_DEV_SUBDOMAIN:${subdomain}`,
-	];
+	return varArgs({
+		LAB_ID: readManifest().labId,
+		ENVIRONMENT: "production", PREVIEW_KEY: "", RESPONSE_VARIANT: "standard", RELEASE: release,
+		WORKER_NAME: TARGET_WORKER, CALLER_ORIGIN: callerOrigin, WORKERS_DEV_SUBDOMAIN: subdomain, ...extra,
+	});
 }
 
 /** Builds all caller vars for the selected account's workers.dev subdomain. */
-export function callerVarArgs(subdomain) {
+export function callerVarArgs(subdomain, manifest = readManifest(), extra = {}) {
 	const { targetOrigin } = getOrigins(subdomain);
-	return [
-		"--var", `TARGET_ORIGIN:${targetOrigin}`,
-		"--var", `TARGET_WORKER_NAME:${TARGET_WORKER}`,
-		"--var", `WORKERS_DEV_SUBDOMAIN:${subdomain}`,
-	];
+	return varArgs({
+		LAB_ID: manifest.labId,
+		ENVIRONMENT: "production", PREVIEW_KEY: "", RELEASE: "production", TARGET_ORIGIN: targetOrigin,
+		PINNED_TARGET_ORIGIN: "", PINNED_TARGET_VERSION_ID: "",
+		UI_ORIGINS: JSON.stringify(showcaseOrigins(manifest)),
+		TARGET_WORKER_NAME: TARGET_WORKER, WORKERS_DEV_SUBDOMAIN: subdomain, ...extra,
+	});
+}
+
+export function varArgs(values) {
+	return Object.entries(values).flatMap(([key, value]) => ["--var", `${key}:${value}`]);
+}
+
+export function showcaseOrigins(manifest) {
+	const { targetOrigin } = getOrigins(manifest.workersDevSubdomain);
+	const urls = [targetOrigin, ...manifest.uiOrigins];
+	for (const branch of manifest.previews) {
+		urls.push(branch.target.url, ...branch.revisions.map((revision) => revision.target.url));
+	}
+	return [...new Set(urls.map(origin))];
 }
 
 /** Runs Wrangler through the project's pinned dependency and returns stdout. */
-export function runWrangler(args, { print = true } = {}) {
+export function runWrangler(args, { print = true, env = process.env } = {}) {
+	assertDeploymentEnvironment(args, env);
 	if (!existsSync(WRANGLER)) throw new Error("Wrangler is not installed. Run npm ci first.");
 	const output = execFileSync(process.execPath, [WRANGLER, ...args], {
 		cwd: PROJECT_ROOT,
 		encoding: "utf8",
 		stdio: ["inherit", "pipe", "inherit"],
+		env,
 	});
 	if (print) process.stdout.write(output);
 	return output;
+}
+
+/** CI name overrides must never change an orchestration command's intended parent. */
+export function assertDeploymentEnvironment(args, env = process.env) {
+	const mutation = (args[0] === "deploy" && !args.includes("--dry-run")) || args[0] === "preview" ||
+		(args[0] === "versions" && ["upload", "deploy"].includes(args[1])) ||
+		(args[0] === "triggers" && args[1] === "deploy" && !args.includes("--dry-run")) || args[0] === "delete";
+	if (mutation && env.WRANGLER_CI_OVERRIDE_NAME) throw new Error("Unset WRANGLER_CI_OVERRIDE_NAME before a cloud-mutating lab command.");
 }
 
 /** Confirms authentication and requires an explicit account for multi-account users. */
@@ -102,16 +127,10 @@ export function parseWorkersDevSubdomain(output) {
 
 /** Replaces the generated manifest after validating every captured UUID. */
 export function writeManifest(manifest) {
-	if (!Array.isArray(manifest.labVersions)) throw new Error("Refusing to write a manifest with invalid lab versions.");
-	const ids = manifest.labVersions.map(({ id }) => id);
-	if (manifest.candidateVersionId && !UUID.test(manifest.candidateVersionId)) throw new Error("Refusing to write a manifest with an invalid candidate version ID.");
-	if (!manifest.candidateVersionId && ids.length > 0) throw new Error("Refusing lab versions without a candidate version.");
-	if (ids.some((id) => !UUID.test(id))) throw new Error("Refusing to write a manifest with an invalid lab version ID.");
-	if (!/^[0-9a-f]{32}$/.test(manifest.accountId)) throw new Error("Refusing to write a manifest with an invalid account ID.");
-	if (manifest.workersDevSubdomain && !SUBDOMAIN.test(manifest.workersDevSubdomain)) throw new Error("Refusing to write a manifest with an invalid workers.dev subdomain.");
+	const validated = validateManifest(manifest);
 	const temporaryPath = `${MANIFEST_PATH}.tmp`;
 	try {
-		writeFileSync(temporaryPath, `${JSON.stringify(manifest, null, "\t")}\n`, { mode: 0o600 });
+		writeFileSync(temporaryPath, `${JSON.stringify(validated, null, "\t")}\n`, { mode: 0o600 });
 		renameSync(temporaryPath, MANIFEST_PATH);
 	} finally {
 		rmSync(temporaryPath, { force: true });
@@ -120,7 +139,7 @@ export function writeManifest(manifest) {
 
 /** Reads the generated manifest used by follow-up production deployments. */
 export function readManifest() {
-	return JSON.parse(readFileSync(MANIFEST_PATH, "utf8"));
+	return validateManifest(JSON.parse(readFileSync(MANIFEST_PATH, "utf8")), { allowEmpty: true });
 }
 
 /** Ensures deployment commands target the account that created the ignored manifest. */
@@ -142,16 +161,17 @@ export function printDryRun() {
 	console.log(`1. Refuse collisions for ${TARGET_WORKER} and ${CALLER_WORKER}`);
 	console.log("2. Deploy a baseline target and discover its actual workers.dev subdomain");
 	console.log("3. Upload candidate alias at 0% plus lab-01 through lab-10");
-	console.log("4. Write account, subdomain, and version IDs to the ignored local manifest");
-	console.log("5. Upload the target UI and atomically create the 100% production / 0% candidate split");
-	console.log("6. Deploy the caller and verify fixed, aliased, and candidate-override routing");
+	console.log("4. Deploy paired branch-ui r1/r2 and branch-api r1 Previews; capture and verify fixed URLs");
+	console.log("5. Verify stable/fixed target routing and both-hop pinning without changing production");
+	console.log("6. Upload the showcase and atomically apply the 100% production / 0% candidate split");
+	console.log("7. Deploy the production caller and verify every recorded routing guarantee");
 }
 
 /** Retries a public health endpoint to validate the supplied workers.dev subdomain. */
 export async function verifyEndpoint(url, predicate, description) {
 	for (let attempt = 1; attempt <= 10; attempt += 1) {
 		try {
-			const response = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(5_000) });
+			const response = await fetch(url, { cache: "no-store", redirect: "manual", signal: AbortSignal.timeout(5_000) });
 			const body = await response.json();
 			if (response.ok && predicate(body)) return body;
 		} catch {

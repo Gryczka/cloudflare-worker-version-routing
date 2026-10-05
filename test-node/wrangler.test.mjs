@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import {
 	assertManifestAccount,
 	assertManifestOwner,
+	assertDeploymentEnvironment,
 	getOrigins,
 	parseVersionId,
 	parseWorkersDevSubdomain,
@@ -48,4 +49,14 @@ test("rejects unknown bootstrap flags before any deployment work", () => {
 	});
 	assert.notEqual(result.status, 0);
 	assert.match(result.stderr, /Unknown option '--dryrun'/);
+});
+
+test("rejects CI name overrides across every cloud-mutating lab command", () => {
+	const env = { WRANGLER_CI_OVERRIDE_NAME: "other-worker" };
+	for (const args of [["deploy"], ["preview"], ["preview", "delete"], ["versions", "upload"], ["versions", "deploy"], ["triggers", "deploy"], ["delete"]]) {
+		assert.throws(() => assertDeploymentEnvironment(args, env), /Unset WRANGLER_CI_OVERRIDE_NAME/);
+	}
+	for (const args of [["deploy", "--dry-run"], ["triggers", "deploy", "--dry-run"], ["whoami"], ["types"], ["versions", "list"]]) {
+		assert.doesNotThrow(() => assertDeploymentEnvironment(args, env));
+	}
 });

@@ -1,7 +1,9 @@
 /** Uploads an updated target and atomically preserves the candidate at 0% traffic. */
 import { parseArgs } from "node:util";
+import { assertOwnedWorker } from "./ownership.mjs";
 import {
 	TARGET_CONFIG,
+	TARGET_WORKER,
 	assertAccountSelected,
 	assertManifestOwner,
 	getOrigins,
@@ -10,6 +12,7 @@ import {
 	runWrangler,
 	targetVarArgs,
 	verifyEndpoint,
+	writeManifest,
 } from "./wrangler.mjs";
 
 const { values } = parseArgs({
@@ -27,6 +30,7 @@ if (!values.force) throw new Error("This command replaces the named target Worke
 const account = assertAccountSelected();
 const manifest = readManifest();
 const subdomain = assertManifestOwner(manifest, account.id);
+await assertOwnedWorker(manifest, TARGET_WORKER);
 const { candidateVersionId } = manifest;
 if (!candidateVersionId) throw new Error("Run npm run bootstrap before deploying target updates.");
 
@@ -42,3 +46,5 @@ runWrangler([
 ]);
 const { targetOrigin } = getOrigins(subdomain);
 await verifyEndpoint(`${targetOrigin}/health`, (body) => body.versionId === productionVersionId, "production target version");
+manifest.productionVersionId = productionVersionId;
+writeManifest(manifest);

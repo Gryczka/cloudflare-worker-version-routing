@@ -1,9 +1,6 @@
-/** Interactive, read-only walkthrough of Worker-to-Worker version routing. */
-
-interface VersionEntry {
-	release: string;
-	id: string;
-}
+/** A read-only showcase: every action sends a real request through a caller Worker. */
+import type { PreviewBranch, VerificationCheck, VersionEntry } from "../../shared/catalog";
+import { verifiedPreviewBranches } from "../../shared/catalog";
 
 interface UiConfig {
 	worker: string;
@@ -13,112 +10,95 @@ interface UiConfig {
 	workersDevSubdomain: string;
 	candidateVersionId: string;
 	labVersions: VersionEntry[];
+	previews: PreviewBranch[];
+	checks: VerificationCheck[];
+	environment: string;
+	previewKey: string;
 }
 
-/** Renders the target's self-contained diagnostic interface. */
 export function renderPage(config: UiConfig): string {
+	config = { ...config, previews: verifiedPreviewBranches(config.previews) };
 	const data = JSON.stringify(config).replaceAll("<", "\\u003c");
+	const branchCards = config.previews.map((branch) => {
+		const latest = branch.revisions.at(-1);
+		return `<article class="card"><span class="label">Stable branch Preview</span><h3>${html(branch.key)}</h3><p>A separate Preview configuration. This URL follows the most recent deployment.</p><code class="address">${html(branch.target.url)}</code><dl><dt>Latest release</dt><dd>${html(latest?.target.release ?? "Deploying")}</dd><dt>Actual version</dt><dd class="mono">${html(latest?.target.versionId ?? "Pending verification")}</dd></dl><div class="actions">${button(`preview=${branch.key}`, "Call latest →", latest?.target.versionId, "", "", { previewKey: branch.key, targetPreviewId: branch.target.id, targetDeploymentId: latest?.target.id ?? "" })}${link(branch.target.url, "Open health ↗")}</div></article>`;
+	}).join("");
+	const revisionCards = config.previews.flatMap((branch) => branch.revisions.map((revision, index) => `
+<article class="revision"><div><span class="label amber">Fixed deployment · ${html(branch.key)}</span><h3>${html(revision.release)}</h3><p>${index === branch.revisions.length - 1 ? "Latest captured deployment" : "Earlier deployment retained after the branch advanced"} · ${html(revision.variant)} configuration</p><code class="address">${html(revision.target.url)}</code><dl><dt>Deployment ID</dt><dd class="mono">${html(revision.target.id)}</dd><dt>Worker version ID</dt><dd class="mono">${html(revision.target.versionId)}</dd></dl></div><div class="actions">${button(`deployment=${revision.key}`, "Replay this deployment →", revision.target.versionId, "", "", { previewKey: branch.key, targetPreviewId: branch.target.id, targetDeploymentId: revision.target.id })}${link(revision.target.url, "Open health ↗")}</div></article>`)).join("");
+	const movingBranch = config.previews.find((branch) => branch.revisions.length > 1 && branch.revisions[0].caller);
+	const first = movingBranch?.revisions[0];
+	const latest = movingBranch?.revisions.at(-1);
+	const pairReceipt = { previewKey: movingBranch?.key ?? "", callerPreviewId: movingBranch?.caller?.id ?? "", targetPreviewId: movingBranch?.target.id ?? "", callerDeploymentId: first?.caller?.id ?? "" };
+	const pinning = first?.caller && latest ? `
+<div class="pair-grid"><article class="card"><span class="label amber">Caller pinned · target moving</span><h3>One fixed hop is not enough.</h3><p>The caller's revision-1 deployment is fixed, but it fetches the stable target branch URL. The target now runs <strong>${html(latest.target.release)}</strong>.</p><code class="address">${html(first.caller.url)}</code><div class="actions">${button("", "Test moving target →", latest.target.versionId, first.caller.url, first.caller.versionId, { ...pairReceipt, targetDeploymentId: latest.target.id })}</div></article><article class="card pinned"><span class="label">Caller pinned · target pinned</span><h3>Replay the exact request chain.</h3><p>Use the same caller deployment with its captured fixed target URL. The target still runs <strong>${html(first.target.release)}</strong>.</p><code class="address">${html(first.target.url)}</code><div class="actions">${button("deployment=pinned", "Test both pins →", first.target.versionId, first.caller.url, first.caller.versionId, { ...pairReceipt, targetDeploymentId: first.target.id })}</div></article></div>
+<p class="note">Both buttons invoke caller version <code>${html(first.caller.versionId)}</code>. Compare the target version IDs in the response panel. Fixed URLs pin executable deployments; they do not snapshot external data.</p>` : '<p class="empty">Deploy two revisions of one paired Preview to populate the request-chain proof.</p>';
 	const versionHost = `${config.worker}.${config.workersDevSubdomain}.workers.dev`;
 	const candidate = config.candidateVersionId;
-	const latestLab = config.labVersions.at(-1);
-	const candidateCards = candidate ? `
-<article class="card"><div class="top"><span class="label alt">Fixed Version URL</span><span class="dot" aria-hidden="true"></span></div><h3>0% candidate</h3><p>Reach the candidate by its own URL, independent of its production traffic allocation.</p><code class="address">${candidate.slice(0, 8)}-${escapeHtml(versionHost)}</code><div class="actions"><button type="button" class="btn" data-query="uploaded=${candidate}" data-version="${candidate}" data-release="candidate">Fixed URL →</button><button type="button" class="btn secondary" data-query="version=${candidate}" data-version="${candidate}">Service override</button></div></article>
-<article class="card"><div class="top"><span class="label alt">Moving Alias</span><span class="dot" aria-hidden="true"></span></div><h3>Candidate alias</h3><p>The readable alias follows whichever uploaded version was most recently assigned the candidate name.</p><code class="address">candidate-${escapeHtml(versionHost)}</code><div class="actions"><button type="button" class="btn" data-query="alias=candidate" data-version="${candidate}" data-release="candidate">Worker fetch →</button></div></article>` : `
-<article class="card"><div class="top"><span class="label alt">Setup required</span></div><h3>Upload versions</h3><p>Run the bootstrap command to create the 0% candidate and ten fixed lab versions, then redeploy this UI with their generated IDs.</p><code class="address">npm run bootstrap</code></article>`;
-	const aliasCard = latestLab ? `
-<article class="card"><div class="top"><span class="label alt">Moving Alias</span><span class="dot" aria-hidden="true"></span></div><h3>${escapeHtml(latestLab.release)} alias</h3><p>This readable workers.dev alias currently points to the latest labeled lab upload.</p><code class="address">${escapeHtml(latestLab.release)}-${escapeHtml(versionHost)}</code><div class="actions"><button type="button" class="btn" data-query="alias=${escapeHtml(latestLab.release)}" data-version="${latestLab.id}" data-release="${escapeHtml(latestLab.release)}">Worker fetch →</button></div></article>` : "";
-	const versionRows = config.labVersions.map(({ release, id }) => `
-<div class="version-item"><strong>${escapeHtml(release)}</strong><code>${id.slice(0, 8)}-${escapeHtml(versionHost)}</code><button type="button" class="btn secondary" data-query="uploaded=${id}" data-version="${id}" data-release="${escapeHtml(release)}" aria-label="Fetch ${escapeHtml(release)} through the caller Worker">Call →</button></div>`).join("");
+	const advanced = candidate ? `
+<div class="pair-grid"><article class="card"><span class="label amber">Specific uploaded version</span><h3>The 0% candidate</h3><p>Call its fixed Version URL, or select its exact version through the production service binding.</p><code class="address">${candidate.slice(0, 8)}-${html(versionHost)}</code><div class="actions">${button(`uploaded=${candidate}`, "Fixed Version URL →", candidate)}${button(`version=${candidate}`, "0% version override →", candidate)}</div></article><article class="card"><span class="label amber">Upload alias · not a branch Preview</span><h3>A moving version alias</h3><p>An alias addresses an uploaded production-configured version. It does not create a separate Preview environment.</p><code class="address">candidate-${html(versionHost)}</code><div class="actions">${button("alias=candidate", "Call upload alias →", candidate)}</div></article></div>` : '<p class="empty">Run <code>npm run bootstrap</code> to populate the uploaded-version lab.</p>';
+	const labRows = config.labVersions.map((entry) => `<div class="version-row"><strong>${html(entry.release)}</strong><code>${html(entry.id)}</code>${button(`uploaded=${entry.id}`, "Call →", entry.id)}</div>`).join("");
+	const checks = config.checks.filter((check) => check.passed);
 
 	return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="description" content="Fetch individually addressable Worker versions over HTTP from another Cloudflare Worker.">
-<title>One Worker, Many Versions | Cloudflare demo</title>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="Explore Cloudflare Worker Previews, replay fixed deployments, and verify exact caller and target version IDs."><title>Worker Previews &amp; Exact Version Pinning</title>
 <style>
-:root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#19221d;background:#f6f7f1;font-synthesis:none}
-*{box-sizing:border-box}body{margin:0}button,a,input{font:inherit}a{color:inherit}.wrap{max-width:1152px;margin:auto;padding:0 24px}.mast{border-bottom:1px solid #dde3d7;background:#fff}.mast .wrap{min-height:64px;display:flex;align-items:center;justify-content:space-between;gap:12px}.brand{font-size:14px;font-weight:800;letter-spacing:-.025em}.brand i{display:inline-block;width:12px;height:12px;border-radius:4px;background:#f48120;transform:rotate(18deg);margin-right:10px}.mast small{color:#617265;font-weight:600}
-main{padding:48px 24px 80px!important}.eyebrow{color:#20764a;font-size:12px;text-transform:uppercase;letter-spacing:.16em;font-weight:800}.hero{max-width:820px}.hero h1{font-size:clamp(40px,5vw,64px);line-height:1.06;letter-spacing:-.055em;margin:16px 0 18px}.hero p{font-size:18px;line-height:1.65;color:#52645a;margin:0}.chips{display:flex;flex-wrap:wrap;gap:10px;margin:28px 0 48px}.chip{font-size:12px;font-weight:700;padding:8px 11px;border-radius:100px;background:#e7ede6;color:#385648}
-.section-heading{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:17px}.section-heading h2{font-size:24px;letter-spacing:-.035em;margin:0}.section-heading span{font-size:13px;color:#66786b}.map{background:#132c22;color:#e9f5e9;border-radius:20px;padding:30px;margin-bottom:44px;box-shadow:0 18px 38px #18382718}.map h2{font-size:16px;margin:0 0 24px;color:#a3dac0}.flow{display:grid;grid-template-columns:1fr 1fr;gap:12px}.node{padding:18px;border-radius:12px;background:#214232;border:1px solid #426751;min-height:112px}.node small{display:block;color:#acd1b9;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;margin-bottom:11px}.node strong{display:block;font-size:16px}.node p{font-size:12px;color:#c6dfd1;margin:7px 0 0}.map .hint{margin:20px 0 0;color:#b5d5c1;font-size:12px}
-.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.card{background:#fff;border:1px solid #dee7da;border-radius:16px;padding:22px;display:flex;flex-direction:column;min-height:286px;box-shadow:0 7px 22px #283c2808}.card .top{display:flex;align-items:center;justify-content:space-between;gap:10px}.label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:#267747}.label.alt{color:#aa6a1d}.dot{height:8px;width:8px;border-radius:50%;background:#55ae70}.card h3{font-size:22px;letter-spacing:-.04em;margin:19px 0 6px}.card p{color:#607166;font-size:13px;line-height:1.55;margin:0 0 20px}.address{display:block;border-radius:8px;background:#f4f7f1;padding:11px;overflow-wrap:anywhere;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#30523c;margin-top:auto}.actions{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin-top:18px}.btn{border:1px solid #236a43;background:#246f46;color:#fff;text-decoration:none;border-radius:8px;padding:9px 13px;cursor:pointer;font-size:12px;font-weight:750}.btn:hover{background:#1c5636}.btn.secondary{background:#fff;color:#286846;border-color:#a9c8b2}.btn.secondary:hover{background:#eff8f0}.btn:focus-visible,a:focus-visible,input:focus-visible{outline:3px solid #f48120;outline-offset:2px}
-.picker{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:22px}.picker label{font-size:13px;font-weight:700}.picker input{flex:1;min-width:230px;border:1px solid #a9c8b2;border-radius:8px;padding:9px 13px;font:13px ui-monospace,SFMono-Regular,Menlo,monospace}.version-section{margin-top:48px}.version-section>p,.empty{color:#607166;font-size:14px;line-height:1.6}.version-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:18px}.version-item{background:#fff;border:1px solid #dee7da;border-radius:12px;padding:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}.version-item strong{min-width:62px;font-size:13px}.version-item code{flex:1;min-width:190px;font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:#30523c;overflow-wrap:anywhere}.version-item .btn{white-space:nowrap}
-.console{margin-top:46px;border:1px solid #d8e4d7;border-radius:16px;overflow:hidden;background:#fff}.console-head{padding:16px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid #e3eae0}.console-head strong{font-size:15px}.console-head span{font-size:12px;color:#678171}.console pre{min-height:144px;max-height:340px;overflow:auto;margin:0;padding:20px;background:#f9fbf7;font:13px/1.7 ui-monospace,SFMono-Regular,Menlo,monospace;color:#21452e;white-space:pre-wrap;overflow-wrap:anywhere}.console .status{font-size:13px;color:#536c59;margin:0;padding:11px 20px;border-top:1px solid #e4eae1}.status.error{color:#b53b2d}.aside{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:42px}.explain{border:1px solid #dde6d8;background:#eef3e9;border-radius:14px;padding:20px}.explain h3{font-size:16px;margin:0 0 10px}.explain p{font-size:13px;line-height:1.6;color:#52675a;margin:0}.explain code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace}.ref{margin-top:34px;color:#627769;font-size:13px}.ref a{color:#19633b}
-@media(max-width:800px){.flow,.cards,.aside,.version-list{grid-template-columns:1fr}main{padding-top:32px!important}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
-</style>
-</head>
-<body>
-<header class="mast"><div class="wrap"><div class="brand"><i aria-hidden="true"></i> Worker version routing</div><small>Interactive Cloudflare Workers reference</small></div></header>
+:root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#192a22;background:#f6f7f1;font-synthesis:none}*{box-sizing:border-box}body{margin:0}button,a,input{font:inherit}a{color:inherit}.wrap{max-width:1160px;margin:auto;padding:0 24px}.mast{border-bottom:1px solid #dde3d7;background:#fff}.mast .wrap{min-height:64px;display:flex;align-items:center;justify-content:space-between;gap:12px}.brand{font-size:14px;font-weight:800}.brand i{display:inline-block;width:12px;height:12px;border-radius:4px;background:#f48120;transform:rotate(18deg);margin-right:10px}.mast a{font-size:12px;color:#59705e}main{padding:40px 24px 72px!important}.eyebrow,.label{font-size:11px;text-transform:uppercase;letter-spacing:.11em;font-weight:800;color:#26764b}.hero{max-width:870px}.hero h1{font-size:clamp(38px,5vw,61px);line-height:1.08;letter-spacing:-.05em;margin:14px 0 18px}.hero p{font-size:17px;line-height:1.65;color:#50665a;margin:0;max-width:790px}.chips{display:flex;flex-wrap:wrap;gap:9px;margin:24px 0 30px}.chip{font-size:11px;font-weight:750;padding:8px 11px;border-radius:100px;background:#e6ede3;color:#355741}.chip.verified{background:#d9eee0}.flow{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:#446651;border:1px solid #274d37;border-radius:15px;overflow:hidden;margin-bottom:38px}.flow>div{background:#153a29;color:#e8f4e9;padding:20px}.flow small{color:#99d3ae;font-size:10px;text-transform:uppercase;letter-spacing:.1em;font-weight:800}.flow strong{display:block;margin:9px 0;font-size:16px}.flow p{margin:0;font-size:12px;line-height:1.6;color:#c5dfce}.section-heading{display:flex;justify-content:space-between;gap:12px;align-items:baseline;margin:0 0 18px}.section-heading h2{font-size:24px;letter-spacing:-.035em;margin:0}.section-heading span{font-size:12px;color:#64786b}.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:15px}.card{display:flex;flex-direction:column;border:1px solid #dbe5d5;background:#fff;border-radius:14px;padding:21px;box-shadow:0 6px 20px #18372706}.card h3,.revision h3{font-size:21px;letter-spacing:-.035em;margin:15px 0 8px}.card p,.revision p{font-size:13px;line-height:1.6;color:#5b7162;margin:0 0 17px}.address{display:block;background:#eff4eb;padding:11px;border-radius:8px;font:11px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;overflow-wrap:anywhere;color:#2d5538;margin-top:auto}.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}.btn{display:inline-block;border:1px solid #286e44;background:#246b43;color:#fff;text-decoration:none;border-radius:7px;padding:9px 12px;font-size:12px;font-weight:750;cursor:pointer}.btn:hover{background:#194f30}.btn.secondary{background:#fff;color:#2b6841;border-color:#b1c8b3}.btn:focus-visible,a:focus-visible,summary:focus-visible{outline:3px solid #f48120;outline-offset:3px}.btn:disabled{opacity:.65;cursor:wait}.amber{color:#a16a20}dl{margin:13px 0 0;font-size:11px}dt{font-weight:750;color:#7a8c7e;margin:8px 0 4px}dd{margin:0;overflow-wrap:anywhere}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#305641}.section{margin-top:40px}.history{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}.revision{background:#fff;border:1px solid #dbe5d5;border-radius:13px;padding:20px;display:flex;flex-direction:column}.revision .actions{margin-top:auto;padding-top:16px}.pair-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.pinned{border-color:#92bd9e;background:#f5fbf4}.note,.empty{font-size:12px;line-height:1.7;color:#5e7364;overflow-wrap:anywhere}.note code{font-size:11px}.console{margin-top:36px;border:1px solid #cfdece;border-radius:14px;overflow:hidden;background:#fff;scroll-margin-top:20px}.console-head{padding:15px 19px;border-bottom:1px solid #dfe8da;display:flex;justify-content:space-between;gap:10px}.console-head strong{font-size:14px}.console-head span{font-size:11px;color:#60806a;overflow-wrap:anywhere}.console pre{min-height:130px;max-height:410px;overflow:auto;margin:0;padding:19px;background:#f9fbf6;font:12px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;overflow-wrap:anywhere;color:#275037}.status{padding:12px 19px;margin:0;border-top:1px solid #dfe8da;font-size:12px;color:#396447}.status.error{color:#a73d25}.version-row{display:flex;flex-wrap:wrap;gap:12px;align-items:center;border:1px solid #dce6d6;padding:12px;border-radius:9px;background:#fff}.version-row strong{font-size:12px}.version-row code{flex:1;font:11px ui-monospace,SFMono-Regular,Menlo,monospace;overflow-wrap:anywhere}.version-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:17px}details{margin-top:34px;border:1px solid #d6e2d1;border-radius:13px;padding:18px;background:#edf3e8}summary{font-size:15px;font-weight:800;cursor:pointer}details>p{font-size:13px;line-height:1.7;color:#576d5e}.reference{display:grid;grid-template-columns:repeat(2,1fr);gap:17px;margin-top:30px}.reference h3{font-size:14px;margin:0 0 9px}.reference p{font-size:12px;line-height:1.7;color:#5f7465;margin:0}.reference a{color:#246c43}.footer{margin-top:34px;font-size:12px;color:#617866;line-height:1.7}.snapshot{padding:12px 16px;background:#fff0d9;border:1px solid #e7c795;border-radius:9px;font-size:12px;margin-bottom:25px}.setup{padding:20px;background:#fff;border:1px dashed #bacfb4;border-radius:12px;color:#54705b;font-size:13px}
+@media(max-width:850px){.cards{grid-template-columns:1fr}.flow,.history,.pair-grid,.reference,.version-list{grid-template-columns:1fr}main{padding-top:30px!important}.section-heading{align-items:start;flex-direction:column;gap:5px}.console-head{flex-direction:column}.mast .wrap{flex-wrap:wrap;padding-top:12px;padding-bottom:12px}.hero h1{font-size:40px}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+</style></head><body>
+<header class="mast"><div class="wrap"><div class="brand"><i aria-hidden="true"></i> Worker Previews + version routing</div><a href="https://github.com/Gryczka/cloudflare-worker-version-routing" target="_blank" rel="noopener noreferrer">Source &amp; reproducible setup ↗</a></div></header>
 <main class="wrap">
-<section class="hero"><div class="eyebrow">A hands-on architecture demo</div><h1>One Worker.<br>Any uploaded version.</h1><p>A caller Worker reaches fixed Version URLs over HTTP, even when those versions are outside the current production deployment. Its <code>global_fetch_strictly_public</code> flag deliberately sends those requests through Cloudflare's public front door.</p></section>
-<div class="chips"><span class="chip">2 Workers</span><span class="chip">1 target script</span><span class="chip">${config.labVersions.length} fixed lab versions</span><span class="chip">Live Worker → Worker requests</span></div>
-<section class="map" aria-label="Request flow"><h2>Two selectors, two guarantees</h2><div class="flow"><div class="node"><small>Fixed destination</small><strong>Caller → Version URL</strong><p>A unique workers.dev hostname stays pinned to one upload, independent of the production traffic split.</p></div><div class="node"><small>Current deployment</small><strong>Caller → Service binding</strong><p>A version override selects a version in the active deployment, including one allocated 0% traffic.</p></div></div><p class="hint">Every button below calls the caller Worker first. The response panel reports the requested URL and exact target version that executed.</p></section>
-<section aria-labelledby="destinations"><div class="section-heading"><h2 id="destinations">Choose a route</h2><span>All routes reach ${escapeHtml(config.worker)}</span></div><div class="cards">
-<article class="card"><div class="top"><span class="label">Production</span><span class="dot" aria-hidden="true"></span></div><h3>Live deployment</h3><p>The caller fetches the target's production workers.dev origin through the public edge.</p><code class="address">${escapeHtml(config.targetOrigin)}</code><div class="actions"><button type="button" class="btn" data-query="" data-release="production">Worker fetch →</button><a class="btn secondary" href="${escapeHtml(config.targetOrigin)}/health" target="_blank" rel="noopener noreferrer">Open URL ↗</a></div></article>
-${candidateCards}${aliasCard}
-</div></section>
-<section class="version-section" aria-labelledby="lab-heading"><div class="section-heading"><h2 id="lab-heading">${config.labVersions.length || "Ten"} versions. Fixed URLs.</h2><span>Uploaded without entering production traffic</span></div><p>Each upload runs the same script with a distinct release label. Select one to verify that the caller reaches its exact version ID.</p><div class="version-list">${versionRows || '<p class="empty">Run the bootstrap command to populate this version manifest.</p>'}</div></section>
-<form class="picker" id="picker"><label for="version-id">Try another version ID</label><input id="version-id" name="version-id" required pattern="[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" aria-describedby="picker-help"><button type="submit" class="btn">Fetch this version →</button></form><p class="ref" id="picker-help">Only versions uploaded to this target Worker with Version URLs enabled can respond.</p>
-<section class="console" id="response" aria-live="polite"><div class="console-head"><strong>Live response</strong><span id="source">No request yet</span></div><pre id="output">Choose a request path above to inspect the response.</pre><p class="status" id="status">Ready to explore.</p></section>
-<section class="aside"><div class="explain"><h3>Why fixed URLs work</h3><p>The caller opts into <code>global_fetch_strictly_public</code>. Its global <code>fetch()</code> reaches public workers.dev Version URLs through Cloudflare's front door. These URLs use each version's production configuration and remain public unless protected with Access.</p></div><div class="explain"><h3>Why keep the binding</h3><p>The fetch-style service binding is the documented Worker-to-Worker path for <code>Cloudflare-Workers-Version-Overrides</code>. Overrides only select versions in the current deployment; fixed Version URLs are what make older uploads independently callable.</p></div></section>
-<p class="ref">Read the <a href="https://developers.cloudflare.com/workers/configuration/compatibility-flags/#global-fetch-strictly-public">compatibility flag docs</a>, <a href="https://developers.cloudflare.com/workers/versions-and-deployments/version-urls/">Version URL docs</a>, and <a href="https://developers.cloudflare.com/workers/versions-and-deployments/version-overrides/">version override docs</a>.</p>
-</main>
-<script type="application/json" id="config">${data}</script>
-<script>
+${config.environment === "preview" ? `<div class="snapshot">You are viewing a deployment of <strong>${html(config.previewKey)}</strong>. Its UI catalog is a snapshot from upload time; use the production showcase for the latest paired history.</div>` : ""}
+<section class="hero"><div class="eyebrow">A hands-on Cloudflare Workers reference</div><h1>Share the branch.<br>Replay the exact deployment.</h1><p>Real Worker Previews give each branch its own configuration and a moving URL. Fixed deployment URLs let you revisit an earlier revision. Follow a live Worker → Worker request and verify exactly which versions execute.</p></section>
+<div class="chips"><span class="chip">2 Workers</span><span class="chip">${config.previews.length} branch Previews per Worker</span><span class="chip">Stable + fixed URLs</span><span class="chip">Both hops independently verified</span>${checks.length ? `<span class="chip verified">${checks.length} recorded checks passed</span>` : ""}</div>
+<section class="flow" aria-label="Three routing guarantees"><div><small>Branch review</small><strong>Stable Preview URL</strong><p>Follows the latest deployment in one Preview. Preview vars and telemetry are configured separately.</p></div><div><small>Reproducible execution</small><strong>Fixed deployment URL</strong><p>Replays one captured deployment. Its executing Worker version ID is checked at runtime.</p></div><div><small>Downstream pinning</small><strong>Pin every moving hop</strong><p>A fixed caller can still fetch a moving target. Use fixed URLs at both hops to keep both versions pinned.</p></div></section>
+<section aria-labelledby="branches"><div class="section-heading"><h2 id="branches">Production and branch Previews</h2><span>Every button calls a Worker first</span></div><div class="cards"><article class="card"><span class="label">Production</span><h3>The public deployment</h3><p>Creating or updating a Preview does not promote it to production.</p><code class="address">${html(config.targetOrigin)}</code><div class="actions">${button("", "Call production →")}${link(config.targetOrigin, "Open health ↗")}</div></article>${branchCards}</div>${config.previews.length ? "" : '<p class="setup">Run <code>npm run bootstrap</code> to create the branch Previews, replay history, and advanced version-routing lab.</p>'}</section>
+<section class="section" aria-labelledby="history"><div class="section-heading"><h2 id="history">A branch moves. Its history stays addressable.</h2><span>Deployment ID ≠ assumed Worker version ID</span></div><div class="history">${revisionCards || '<p class="empty">The generated deployment manifest is not populated yet.</p>'}</div></section>
+<section class="section" aria-labelledby="pinning"><div class="section-heading"><h2 id="pinning">Pin the whole request chain</h2><span>Same caller URL, different downstream guarantees</span></div>${pinning}</section>
+<section class="console" id="response" aria-live="polite"><div class="console-head"><strong>Live request evidence</strong><span id="source">No request yet</span></div><pre id="output">Choose a branch, fixed deployment, or paired request above.</pre><p class="status" id="status">Ready to verify both execution identities.</p></section>
+<details id="advanced"><summary>Advanced: exact uploaded versions and the 0% production candidate</summary><p>Version URLs inspect an uploaded version with its production resources. A fetch-style service binding and version override can select a version in the current production deployment, including one allocated 0% traffic. These are separate from branch Previews.</p>${advanced}<h3>${config.labVersions.length || "Ten"} uploaded versions, each independently callable</h3><div class="version-list">${labRows || '<p class="empty">Run the bootstrap command to populate this version manifest.</p>'}</div></details>
+<section class="reference"><div><h3>Preview configuration and resources</h3><p><a href="https://developers.cloudflare.com/workers/previews/configuration/">Preview vars and bindings</a> are explicit. <a href="https://developers.cloudflare.com/workers/previews/resources/">Durable Objects and Containers get per-Preview resources</a>; KV, D1, and R2 remain shared when bound to the same resource. This stateless lab proves configuration and execution routing.</p></div><div><h3>Observability and the public edge</h3><p>Inspect each Preview's <a href="https://developers.cloudflare.com/workers/previews/test-and-debug/">logs and traces</a> in the dashboard, using the response trace ID. HTTP pairing uses <code>global_fetch_strictly_public</code>; <a href="https://developers.cloudflare.com/workers/previews/resources/#service-bindings">Preview service bindings resolve to production</a>.</p></div></section>
+<p class="footer"><a href="https://developers.cloudflare.com/workers/previews/compare-workflows/">Compare workflows</a> · <a href="https://developers.cloudflare.com/workers/previews/custom-domains/">Custom-domain Previews</a> · <a href="https://developers.cloudflare.com/workers/versions-and-deployments/version-urls/">Version URLs</a> · <a href="https://developers.cloudflare.com/workers/versions-and-deployments/version-overrides/">Version overrides</a><br>Public showcase version <code>${html(config.version)}</code>. Fixed URL availability depends on retaining the Preview and its deployment history.</p>
+</main><script type="application/json" id="config">${data}</script><script>
 const config = JSON.parse(document.getElementById('config').textContent);
 const source = document.getElementById('source');
 const output = document.getElementById('output');
 const status = document.getElementById('status');
 let current = 0;
-
-async function probe(query, expectedVersion, expectedRelease) {
+async function probe(button) {
   const ticket = ++current;
-  const url = config.callerOrigin + '/probe' + (query ? '?' + query : '');
+  const url = (button.dataset.caller || config.callerOrigin) + '/probe' + (button.dataset.query ? '?' + button.dataset.query : '');
   source.textContent = 'Caller Worker → GET ' + url;
-  status.className = 'status';
-  status.textContent = 'Sending request...';
-  output.textContent = 'Waiting for response...';
+  status.className = 'status'; status.textContent = 'Sending request…'; output.textContent = 'Waiting for response…';
   try {
-    const response = await fetch(url, { cache: 'no-store' });
+    const response = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(15000) });
     const result = await response.json();
     if (ticket !== current) return;
-    output.textContent = JSON.stringify(result, null, 2);
+    output.textContent = JSON.stringify({ requested: { callerUrl: url, expectedCallerVersionId: button.dataset.callerVersion || null, expectedTargetVersionId: button.dataset.version || null, ...JSON.parse(button.dataset.receipt) }, response: result }, null, 2);
     const target = result.upstream?.body;
-    const ok = response.ok && result.upstream?.status === 200 && target?.worker === config.worker
-      && (!expectedVersion || target.versionId === expectedVersion)
-      && (!expectedRelease || target.release === expectedRelease);
+    const targetMatches = !button.dataset.version || target?.versionId === button.dataset.version;
+    const callerMatches = !button.dataset.callerVersion || result.caller?.versionId === button.dataset.callerVersion;
+    const ok = response.ok && result.upstream?.status === 200 && target?.worker === config.worker && targetMatches && callerMatches;
     status.textContent = ok
-      ? 'Success · ' + target.hostname + ' ran release "' + target.release + '" (version ' + target.versionId + ').'
-      : 'The response did not match the expected version. Inspect the payload above.';
+      ? 'Verified · caller ' + result.caller.versionId + ' → target ' + target.versionId + ' (' + target.release + ').'
+      : 'Execution did not match the captured expectation. Inspect the actual IDs and upstream response above.';
     if (!ok) status.classList.add('error');
   } catch (error) {
     if (ticket !== current) return;
-    status.className = 'status error';
-    status.textContent = 'Request failed. Verify that the caller Worker is deployed and reachable.';
-    output.textContent = String(error);
+    status.className = 'status error'; status.textContent = 'Request failed. Inspect the destination and browser network response.'; output.textContent = String(error);
   }
 }
-
-document.querySelectorAll('[data-query]').forEach(button => button.addEventListener('click', () => {
-  probe(button.dataset.query || '', button.dataset.version, button.dataset.release);
-}));
-document.getElementById('picker').addEventListener('submit', event => {
-  event.preventDefault();
-  const version = document.getElementById('version-id').value.trim();
-  probe('uploaded=' + encodeURIComponent(version), version);
-});
-</script>
-</body></html>`;
+document.querySelectorAll('[data-query]').forEach(button => button.addEventListener('click', () => { void probe(button); }));
+</script></body></html>`;
 }
 
-/** Escapes deployment-controlled values before inserting them into HTML. */
-function escapeHtml(value: string): string {
-	return value.replace(/[&<>"']/g, (character) => ({
-		"&": "&amp;",
-		"<": "&lt;",
-		">": "&gt;",
-		'"': "&quot;",
-		"'": "&#39;",
-	})[character] ?? character);
+function button(query: string, label: string, version = "", caller = "", callerVersion = "", receipt: Record<string, string> = {}): string {
+	return `<button type="button" class="btn" data-query="${html(query)}" data-version="${html(version)}" data-caller="${html(caller)}" data-caller-version="${html(callerVersion)}" data-receipt="${html(JSON.stringify(receipt))}">${html(label)}</button>`;
+}
+
+function link(origin: string, label: string): string {
+	return `<a class="btn secondary" href="${html(origin)}/health" target="_blank" rel="noopener noreferrer">${html(label)}</a>`;
+}
+
+function html(value: string): string {
+	return value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character] ?? character);
 }

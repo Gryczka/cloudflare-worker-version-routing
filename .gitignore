@@ -24,6 +24,9 @@ out/
 .wrangler/
 *.tsbuildinfo
 workers/target/src/versions.generated.json*
+workers/*/wrangler.*.generated.json*
+hosted.generated.json*
+verification.generated.json*
 
 # Coverage
 coverage/

@@ -1,13 +1,18 @@
 {
 	"name": "cloudflare-worker-version-routing",
 	"version": "1.0.0",
-	"description": "Call individually addressable Cloudflare Worker versions over HTTP from another Worker.",
+	"description": "Explore real Worker Previews and verify exact caller/target deployment and version pinning.",
 	"private": true,
 	"scripts": {
 		"preinstall": "node scripts/ensure-manifest.mjs",
 		"bootstrap": "node scripts/bootstrap.mjs",
 		"deploy:caller": "node scripts/deploy-caller.mjs",
 		"deploy:target": "node scripts/deploy-target.mjs",
+		"preview:pair": "node scripts/deploy-preview.mjs",
+		"preview:verify": "node scripts/verify-previews.mjs",
+		"preview:delete": "node scripts/delete-preview.mjs",
+		"preview:recover": "node scripts/recover-preview.mjs",
+		"verify:live": "node scripts/verify-live.mjs",
 		"dev:caller": "wrangler dev --config workers/caller/wrangler.jsonc",
 		"dev:target": "wrangler dev --config workers/target/wrangler.jsonc",
 		"versions:target": "wrangler versions list --config workers/target/wrangler.jsonc",
@@ -15,7 +20,7 @@
 		"cf-typegen": "wrangler types workers/caller/env.d.ts --config workers/caller/wrangler.jsonc --strict-vars false && wrangler types workers/target/env.d.ts --config workers/target/wrangler.jsonc --env-interface TargetEnv --include-runtime false --strict-vars false",
 		"cf-types:check": "wrangler types workers/caller/env.d.ts --config workers/caller/wrangler.jsonc --strict-vars false --check && wrangler types workers/target/env.d.ts --config workers/target/wrangler.jsonc --env-interface TargetEnv --include-runtime false --strict-vars false --check",
 		"typecheck": "npm run cf-types:check && tsc --noEmit && tsc -p test/tsconfig.json --noEmit",
-		"deploy:dry-run": "wrangler deploy --dry-run --config workers/target/wrangler.jsonc && wrangler deploy --dry-run --config workers/caller/wrangler.jsonc",
+		"deploy:dry-run": "node scripts/check-previews.mjs",
 		"check": "npm run typecheck && npm test && npm run deploy:dry-run"
 	},
 	"repository": {
@@ -31,6 +36,6 @@
 		"@types/node": "^26.6.2",
 		"typescript": "^5.5.2",
 		"vitest": "~4.1.0",
-		"wrangler": "^4.136.3"
+		"wrangler": "4.147.0"
 	}
 }
