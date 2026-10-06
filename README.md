@@ -61,6 +61,70 @@ The caller's `global_fetch_strictly_public` flag deliberately sends global `fetc
 
 Fixed URLs pin executable deployments, **not snapshots of external data**. Previews bound to the same KV, D1, or R2 resource still share its data. Durable Objects and Containers have per-Preview resources; consult the [resource reference](https://developers.cloudflare.com/workers/previews/resources/) for each binding's behavior and limitations. This stateless lab demonstrates configuration and execution routing.
 
+### 1. A branch advances; fixed deployments stay addressable
+
+```mermaid
+flowchart LR
+    subgraph Before["After deploying branch-ui r1"]
+        StableBefore["Stable branch URL"] -. "latest" .-> FirstBefore["Target r1 · compact config"]
+        FixedBefore["Fixed r1 deployment URL"] --> FirstBefore
+    end
+    subgraph After["After advancing branch-ui to r2"]
+        StableAfter["Same stable branch URL"] -. "latest" .-> Latest["Target r2 · detailed config"]
+        FixedFirst["Same fixed r1 deployment URL"] --> FirstAfter["Target r1 · compact config"]
+        FixedLatest["Fixed r2 deployment URL"] --> Latest
+    end
+    StableBefore -->|"advance the Preview"| StableAfter
+    classDef moving fill:#fff5e7,stroke:#b47a32,color:#26392e
+    classDef fixed fill:#f2effa,stroke:#7a609f,color:#26392e
+    classDef latest fill:#eaf4e9,stroke:#6b9875,color:#26392e
+    class StableBefore,StableAfter moving
+    class FixedBefore,FixedFirst,FixedLatest,FirstBefore,FirstAfter fixed
+    class Latest latest
+```
+
+Try **Call latest** and **Replay this deployment** in the live demo. The dashed pointer follows the branch; the solid pointers address captured deployments. Preview advancement is separate from production promotion. Fixed URL availability depends on retaining the Preview and its history.
+
+### 2. Pin every moving hop
+
+```mermaid
+flowchart LR
+    Caller["Same fixed caller r1<br/>Caller version A"]
+    Caller -->|"public HTTP"| Stable["Stable target branch URL"]
+    Caller -->|"public HTTP"| Fixed["Captured fixed target URL"]
+    Stable -. "follows latest" .-> NewTarget["Target r2<br/>Target version C"]
+    Fixed --> OriginalTarget["Target r1<br/>Target version B"]
+    classDef fixed fill:#f2effa,stroke:#7a609f,color:#26392e
+    classDef moving fill:#fff5e7,stroke:#b47a32,color:#26392e
+    classDef latest fill:#eaf4e9,stroke:#6b9875,color:#26392e
+    class Caller,Fixed,OriginalTarget fixed
+    class Stable moving
+    class NewTarget latest
+```
+
+**Test moving target** keeps caller A but reaches target C. **Test both pins** uses that same caller A and retains target B. A/B/C are illustrative runtime version IDs; the live diagrams use recorded releases and short IDs, while the response inspector compares full actual IDs. Both paths use public HTTP because Preview service bindings resolve to production.
+
+### 3. An upload address and an override take different paths
+
+```mermaid
+flowchart LR
+    Caller["Production caller Worker"]
+    Caller -->|"public HTTP · production URL"| Production
+    Caller -->|"public HTTP · fixed Version URL or alias"| Upload["Addressed uploaded version<br/>May be outside the active deployment"]
+    Caller -->|"fetch-style service binding"| Override["Cloudflare-Workers-Version-Overrides<br/>Target Worker name = candidate UUID"]
+    Override -->|"explicit version selection"| Candidate
+    subgraph Active["Active production deployment"]
+        Production["Production version<br/>100% default traffic"]
+        Candidate["Candidate version<br/>0% default traffic"]
+    end
+    classDef fixed fill:#f2effa,stroke:#7a609f,color:#26392e
+    classDef latest fill:#eaf4e9,stroke:#6b9875,color:#26392e
+    class Override,Upload,Candidate fixed
+    class Production latest
+```
+
+Open **Advanced version routing** and compare **Fixed Version URL**, **Call upload alias**, and **0% version override**. Direct upload addresses do not use the traffic split. An override selects only a version in the active deployment; 0% means no default traffic allocation, rather than being unavailable to an explicit override.
+
 ## Prerequisites
 
 - Node.js `22.12.x` or a supported `24+` release. CI tests Node `22.12.0` and `24`.
