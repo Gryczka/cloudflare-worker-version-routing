@@ -1,0 +1,29 @@
+package-lock.json
+  s_8ccf8140ee63a5::t_d149629bebf238 630-632,649,653-655,672,676-678,686,696-698,713-715,730-732,747-749,764-766,781-783,798-800,815-817,832-834,849-851,866-868,885,889-891,908,912-914,931,935-937,954,958-960,977,981-983,1000,1004-1006,1023,1027-1029,1046,1050-1052,1067-1069,1077,1087-1089,1107-1109,1127-1129,2270-2272,2287-2311,2327-2329
+package.json
+  s_57b103afdfee45::t_e33672ffef7f53 40-44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "0012d91e5db6d3741cefb52071baf234650704fd",
+  "prompts": {},
+  "sessions": {
+    "s_57b103afdfee45": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f16b1d786ffeWc0jDy9i1y4sAW",
+        "model": "@cf/zai-org/glm-5.3"
+      },
+      "human_author": "gryczka <pgryczka@cloudflare.com>"
+    },
+    "s_8ccf8140ee63a5": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f31ae87f0ffeS2b1Jb1uWCk6Nz",
+        "model": "grok-4.7"
+      },
+      "human_author": "gryczka <pgryczka@cloudflare.com>"
+    }
+  }
+}
