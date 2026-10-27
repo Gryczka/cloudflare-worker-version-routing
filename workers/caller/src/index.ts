@@ -1,6 +1,7 @@
 /** Diagnostic HTTP routing. True Previews deliberately use HTTP rather than a production service binding. */
 import rawManifest from "../../target/src/versions.generated.json";
 import { ALIAS, KEY, UUID, findRevision, ownedOrigin, type DeploymentManifest } from "../../shared/catalog";
+import { diagnosticLog, discovery } from "../../shared/garden";
 
 // Wrangler currently generates production types only; Preview callers omit TARGET.
 export type CallerEnv = Omit<Env, "TARGET"> & Partial<Pick<Env, "TARGET">>;
@@ -12,6 +13,10 @@ export function createCaller(manifest: DeploymentManifest) {
 	async fetch(request, env): Promise<Response> {
 		const url = new URL(request.url);
 		const responseHeaders = corsHeaders(request, env);
+		if (request.method === "GET" || request.method === "HEAD") {
+			const discovered = discovery(url.pathname);
+			if (discovered) return request.method === "HEAD" ? new Response(null, discovered) : discovered;
+		}
 		if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: responseHeaders });
 		if (request.method !== "GET") return Response.json({ error: "Use GET." }, { status: 405, headers: responseHeaders });
 		const caller = {
@@ -91,18 +96,23 @@ export function createCaller(manifest: DeploymentManifest) {
 		let body: unknown;
 		try {
 			targetUrl = `${ownedOrigin(targetOrigin, env.TARGET_WORKER_NAME, env.WORKERS_DEV_SUBDOMAIN)}/api/invoke`;
+			if (!env.PROBE_RATE_LIMITER || !env.GLOBAL_PROBE_LIMITER) return Response.json({ error: "Probe admission is unavailable" }, { status: 503, headers: responseHeaders });
+			const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+			if (!(await env.PROBE_RATE_LIMITER.limit({ key: `probe:${ip}` })).success || !(await env.GLOBAL_PROBE_LIMITER.limit({ key: "active-probes" })).success) {
+				return Response.json({ error: "Probe rate limit reached" }, { status: 429, headers: { ...responseHeaders, "retry-after": "60" } });
+			}
 			const headers = new Headers({ "x-demo-trace-id": traceId });
 			if (version) headers.set("Cloudflare-Workers-Version-Overrides", `${env.TARGET_WORKER_NAME}="${version}"`);
 			const init = { headers, signal: AbortSignal.timeout(10_000), redirect: "manual" as const };
 			upstream = version && env.TARGET ? await env.TARGET.fetch(targetUrl, init) : await fetch(targetUrl, init);
 			body = parseBody(await readLimitedBody(upstream));
 		} catch (error) {
-			console.error(JSON.stringify({ event: "target_request_failed", traceId, mode, error: String(error) }));
+			diagnosticLog({ event: "target_request_failed", traceId, mode });
 			return Response.json({ error: "Target request failed", mode, traceId }, { status: 502, headers: responseHeaders });
 		}
 		const actualVersionId = isIdentity(body) ? body.versionId : null;
 		const matchesExpectedVersion = expectedVersionId ? actualVersionId === expectedVersionId : null;
-		console.log(JSON.stringify({ event: "probe", traceId, mode, callerVersionId: caller.versionId, targetVersionId: actualVersionId, status: upstream.status, matchesExpectedVersion }));
+		diagnosticLog({ event: "probe", traceId, mode, callerVersionId: caller.versionId, targetVersionId: actualVersionId, status: upstream.status });
 		return Response.json({
 			mode, traceId,
 			requested: { version, uploaded, alias, preview, deployment, url: targetUrl, previewId, deploymentId, expectedVersionId },
@@ -120,6 +130,7 @@ function corsHeaders(request: Request, env: CallerEnv): Record<string, string> {
 	const headers: Record<string, string> = {
 		"cache-control": "no-store", "x-content-type-options": "nosniff", "vary": "Origin",
 		"access-control-allow-methods": "GET, OPTIONS",
+		"x-robots-tag": "noindex, nofollow",
 	};
 	try {
 		const origins: unknown = JSON.parse(env.UI_ORIGINS);

@@ -13,6 +13,23 @@ The hosted demo runs this reference's two neutral Workers. The public configurat
 
 **Status:** A reference implementation shared as-is, with best-effort support through [GitHub Issues](https://github.com/Gryczka/cloudflare-worker-version-routing/issues). It is not actively maintained.
 
+## Public admission and discovery
+
+Active `/probe` calls fail closed unless both `PROBE_RATE_LIMITER` and `GLOBAL_PROBE_LIMITER` are configured. Namespace `2001` permits 10 probes/minute per IP; namespace `2002` permits 60/minute for a shared **per-location** key. These bindings are explicitly present in production and Preview configurations. Native limits are approximate and are not exact account-wide quotas. Invalid selectors, health, robots, sitemap, and browsing do not spend probe allowance or make downstream requests. CORS is not authorization.
+
+Application diagnostics use a fixed field allowlist, 80-character string limits, and approximately 1% sampling; no request bodies, query strings, or raw errors are logged. Production and Preview observability sampling is 1%. Sampling does not affect response version metadata, upstream inspection, or exact caller/target routing checks. Historical uploads keep their old code and logs; a hardened production deployment does not replace existing fixed Version/Preview URLs.
+
+The production showcase keeps meaningful server-rendered HTML, a description, and canonical `https://pin.gryczka.dev/`. Preview HTML is `noindex`. Real robots/sitemap exclude execution/probe paths and declare `Content-Signal: search=yes,ai-input=yes,ai-train=no`. Cloudflare resource anchors carry app-garden UTM attribution while preserving other query parameters/fragments and literal code examples.
+
+Credential-isolated local validation:
+
+```bash
+NODE_OPTIONS=--require=./scripts/offline-check.cjs npm run cf-typegen
+NODE_OPTIONS=--require=./scripts/offline-check.cjs npm run check
+```
+
+`check` includes mocked routing tests and local production/Preview bundle dry runs. The preload excludes credential files/tokens but is not a network sandbox. Future production deployment uses the ownership-aware helpers, after verifying the local manifest and account: `npm run deploy:target -- --force`, then `npm run deploy:caller -- --force`. These helpers preserve the 100% production / 0% candidate split and recorded routing; their live checks make real diagnostic requests. Do not deploy sanitized `.example` origins directly to the hosted application.
+
 ## What You Can Verify
 
 The bootstrap creates `branch-ui` and `branch-api` Previews for both caller and target. It deploys `branch-ui-r1`, advances that same Preview to `r2`, and checks the original fixed caller again.
@@ -272,7 +289,7 @@ Both Wrangler configs explicitly declare Preview vars, `version_metadata`, and p
     "version_metadata": { "binding": "CF_VERSION_METADATA" },
     "observability": {
       "enabled": true,
-      "logs": { "enabled": true, "persist": true, "head_sampling_rate": 1 },
+      "logs": { "enabled": true, "persist": true, "head_sampling_rate": 0.01 },
       "traces": { "enabled": true, "persist": true, "head_sampling_rate": 1 }
     }
     // See the complete configs for all Preview vars.

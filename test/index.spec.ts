@@ -1,4 +1,4 @@
-import { env } from "cloudflare:test";
+import { env as runtimeEnv } from "cloudflare:test";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import worker from "../workers/caller/src/index";
 import { createCaller, type CallerEnv } from "../workers/caller/src/index";
@@ -8,9 +8,18 @@ import fixture from "./preview.fixture.json";
 import { ownedOrigin, type DeploymentManifest } from "../workers/shared/catalog";
 
 const IncomingRequest = Request<unknown, IncomingRequestCfProperties>;
+const env = { ...runtimeEnv, PROBE_RATE_LIMITER: { limit: async () => ({ success: true }) }, GLOBAL_PROBE_LIMITER: { limit: async () => ({ success: true }) } };
 afterEach(() => vi.unstubAllGlobals());
 
 describe("caller worker", () => {
+	it("throttles active probes before a provider call while discovery remains cheap", async () => {
+		const fetcher = vi.fn();
+		vi.stubGlobal("fetch", fetcher);
+		const denied = { ...env, PROBE_RATE_LIMITER: { limit: async () => ({ success: false }) } };
+		expect((await worker.fetch(new IncomingRequest("https://caller.example/probe"), denied)).status).toBe(429);
+		expect((await worker.fetch(new IncomingRequest("https://caller.example/robots.txt"), denied)).status).toBe(200);
+		expect(fetcher).not.toHaveBeenCalled();
+	});
 	it("returns usage for unknown paths", async () => {
 		const response = await worker.fetch(
 			new IncomingRequest("https://caller.example/"),
